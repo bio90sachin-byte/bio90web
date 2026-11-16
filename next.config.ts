@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
-  root: "D:/BIO90/bio90-website",
+  
   rules: {
     "*.css": {
       loaders: ["@tailwindcss/turbopack"],
