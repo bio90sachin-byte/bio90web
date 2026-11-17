@@ -19,7 +19,6 @@ import {
   Clock,
   Menu,
 } from "lucide-react";
-import SiteFooter from "./components/SiteFooter";
 
 const courses = [
   {
@@ -197,8 +196,6 @@ export default function Home() {
           </Link>
         </div>
       </section>
-
-     <SiteFooter />
     </main>
   );
 }
