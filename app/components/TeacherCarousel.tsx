@@ -18,6 +18,7 @@ type Teacher = {
   videoId?: string;
   videoStart?: number;
   videoEnd?: number;
+  badge?: string;
 };
 
 const teachers: Teacher[] = [
@@ -28,6 +29,7 @@ const teachers: Teacher[] = [
     videoId: "a8jWJWBvzeY",
     videoStart: 94,
     videoEnd: 100,
+    badge: "FOUNDER & CEO",
   },
   {
     name: "Priyanshi Ma'am",
