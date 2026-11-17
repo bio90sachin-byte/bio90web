@@ -409,8 +409,8 @@ export default function TeacherCarousel() {
                       <div className="teacher-media-gradient" />
 
                       <span className="teacher-faculty-label">
-                        BIO90 FACULTY
-                      </span>
+                       {teacher.badge || "BIO90 FACULTY"}
+                        </span>
 
                       {/* Sound button */}
                       {isCenter &&
