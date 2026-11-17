@@ -12,9 +12,6 @@ import {
   Sparkles,
 } from "lucide-react";
 
-
-
-
 function CartoonMascot() {
   return (
     <img
@@ -26,23 +23,22 @@ function CartoonMascot() {
   );
 }
 
-
-
 export default function FloatingSupport() {
   const pathname = usePathname();
   const isKidsPage = pathname === "/class-1-8";
 
   const [isOpen, setIsOpen] = useState(false);
 
+  // Auto-open only once when the website initially loads.
+  // Page navigation will not trigger the popup again.
+  // Refreshing the browser will show it again.
   useEffect(() => {
-    setIsOpen(false);
-
     const timer = window.setTimeout(() => {
       setIsOpen(true);
     }, 4000);
 
     return () => window.clearTimeout(timer);
-  }, [pathname]);
+  }, []);
 
   return (
     <div className="fixed bottom-5 right-5 z-[999] flex flex-col items-end gap-3">
@@ -52,7 +48,8 @@ export default function FloatingSupport() {
         <div className="relative w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-3xl border border-white bg-white shadow-[0_18px_55px_rgba(7,27,67,0.24)] animate-in fade-in slide-in-from-bottom-3 duration-300">
 
           {/* Branded Header */}
-          <div className="relative overflow-hidden bg-gradient-to-r from-[#071B43] to-[#123B70] px-5 py-4 text-white">
+          <div className="relative overflow-hidden bg-gradient-to-r from-[#071B43] to-[#123B70] px-5 py-4 pr-14 text-white">
+
             <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-lime-400/15 blur-xl" />
 
             <div className="relative flex items-center justify-between">
@@ -60,9 +57,11 @@ export default function FloatingSupport() {
                 <p className="text-[10px] font-black tracking-[0.25em] text-lime-300">
                   BIO90 SUPPORT
                 </p>
+
                 <h3 className="mt-1 text-lg font-black">
                   {isKidsPage ? "Hello, Young Learner!" : "How can we help?"}
                 </h3>
+
                 <p className="mt-1 text-xs text-blue-100">
                   {isKidsPage
                     ? "Let's make learning easy and fun!"
@@ -77,12 +76,14 @@ export default function FloatingSupport() {
               )}
             </div>
 
+            {/* Close Button - Separate from GIF */}
             <button
+              type="button"
               onClick={() => setIsOpen(false)}
               aria-label="Close support popup"
-              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white transition hover:rotate-90 hover:bg-white/25"
+              className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-white text-[#071B43] shadow-lg transition hover:rotate-90 hover:bg-lime-300"
             >
-              <X size={17} />
+              <X size={18} strokeWidth={2.5} />
             </button>
           </div>
 
@@ -94,6 +95,7 @@ export default function FloatingSupport() {
                   <Sparkles size={17} className="text-green-600" />
                   Need help with your studies?
                 </div>
+
                 <p className="mt-1 text-xs leading-5 text-slate-600">
                   Ask us about Classes 1–8, subjects, notes and practice material.
                 </p>
@@ -141,7 +143,10 @@ export default function FloatingSupport() {
         }`}
       >
         {isOpen ? (
-          <X size={27} className={isKidsPage ? "text-[#071B43]" : "text-lime-300"} />
+          <X
+            size={27}
+            className={isKidsPage ? "text-[#071B43]" : "text-lime-300"}
+          />
         ) : isKidsPage ? (
           <CartoonMascot />
         ) : (
