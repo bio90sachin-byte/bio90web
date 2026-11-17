@@ -56,14 +56,11 @@ export default function TeacherCarousel() {
   const [screenWidth, setScreenWidth] = useState(390);
 
   const sectionRef = useRef<HTMLElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
 
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const pointerStartX = useRef(0);
-  const pointerStartY = useRef(0);
   const pointerDragging = useRef(false);
-  const dragHandled = useRef(false);
 
   const total = teachers.length;
 
@@ -87,7 +84,7 @@ export default function TeacherCarousel() {
     };
   }, []);
 
-  // Trigger entrance animation
+  // Entrance animation
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
@@ -107,12 +104,13 @@ export default function TeacherCarousel() {
     return () => observer.disconnect();
   }, []);
 
-  // Stop old video whenever center teacher changes
+  // Stop previous video when center teacher changes
   useEffect(() => {
     setActiveVideo(null);
     setSoundEnabled(false);
   }, [activeIndex]);
 
+  // Navigation
   const goToSlide = useCallback(
     (index: number) => {
       setActiveIndex((index + total) % total);
@@ -128,7 +126,7 @@ export default function TeacherCarousel() {
     setActiveIndex((current) => (current - 1 + total) % total);
   }, [total]);
 
-  // Find each card's position relative to the active card
+  // Relative position of each card
   const getPosition = (index: number) => {
     let position = index - activeIndex;
 
@@ -138,7 +136,7 @@ export default function TeacherCarousel() {
     return position;
   };
 
-  // Build YouTube URL
+  // YouTube embed URL
   const getVideoUrl = (teacher: Teacher) => {
     if (!teacher.videoId) return "";
 
@@ -151,7 +149,6 @@ export default function TeacherCarousel() {
       modestbranding: "1",
       iv_load_policy: "3",
       disablekb: "1",
-      fs: "0",
     });
 
     if (teacher.videoStart !== undefined) {
@@ -165,29 +162,23 @@ export default function TeacherCarousel() {
     return `https://www.youtube-nocookie.com/embed/${teacher.videoId}?${params.toString()}`;
   };
 
-  // Center card interaction
+  // Card click
   const handleCardClick = (index: number) => {
     if (index !== activeIndex) {
       goToSlide(index);
       return;
     }
 
-    // Mobile: tap center card to play or stop
-    if (isMobile) {
-      const teacher = teachers[index];
-
-      if (!teacher.videoId) return;
-
+    if (isMobile && teachers[index]?.videoId) {
       setActiveVideo((current) =>
         current === index ? null : index
       );
-
       setSoundEnabled(false);
     }
   };
 
-  // Desktop: play only when hovering over center card
-  const handleCardMouseEnter = (index: number) => {
+  // Desktop hover
+  const handleMouseEnter = (index: number) => {
     if (isMobile || index !== activeIndex) return;
 
     if (teachers[index]?.videoId) {
@@ -196,7 +187,7 @@ export default function TeacherCarousel() {
     }
   };
 
-  const handleCardMouseLeave = (index: number) => {
+  const handleMouseLeave = (index: number) => {
     if (isMobile || index !== activeIndex) return;
 
     setActiveVideo(null);
@@ -216,7 +207,6 @@ export default function TeacherCarousel() {
     const differenceX = touchStartX.current - endX;
     const differenceY = touchStartY.current - endY;
 
-    // Ignore vertical scrolling
     if (
       Math.abs(differenceX) < 35 ||
       Math.abs(differenceX) < Math.abs(differenceY) * 1.15
@@ -236,26 +226,17 @@ export default function TeacherCarousel() {
     if (isMobile || event.button !== 0) return;
 
     pointerStartX.current = event.clientX;
-    pointerStartY.current = event.clientY;
     pointerDragging.current = true;
-    dragHandled.current = false;
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
     if (!pointerDragging.current || isMobile) return;
 
-    const differenceX = pointerStartX.current - event.clientX;
-    const differenceY = pointerStartY.current - event.clientY;
-
+    const difference = pointerStartX.current - event.clientX;
     pointerDragging.current = false;
 
-    if (
-      Math.abs(differenceX) > 45 &&
-      Math.abs(differenceX) > Math.abs(differenceY)
-    ) {
-      dragHandled.current = true;
-
-      if (differenceX > 0) {
+    if (Math.abs(difference) > 45) {
+      if (difference > 0) {
         nextSlide();
       } else {
         previousSlide();
@@ -263,7 +244,7 @@ export default function TeacherCarousel() {
     }
   };
 
-  // Card dimensions and spacing
+  // Responsive stage and card sizing
   const stageWidth = Math.max(
     280,
     Math.min(screenWidth - (isMobile ? 24 : 40), 1250)
@@ -280,17 +261,12 @@ export default function TeacherCarousel() {
     ? mobileCardWidth
     : desktopCardWidth;
 
-  // On desktop, fit all five cards within the stage.
-  // On mobile, show center and neighboring cards peeking in.
   const cardStep = isMobile
     ? cardWidth * 0.82
     : (stageWidth - cardWidth) / 4;
 
   return (
-    <section
-      ref={sectionRef}
-      className="teacher-section"
-    >
+    <section ref={sectionRef} className="teacher-section">
       <div className="teacher-glow" />
 
       <div className="teacher-container">
@@ -312,8 +288,7 @@ export default function TeacherCarousel() {
 
         {/* Carousel */}
         <div
-          ref={stageRef}
-          className={`teacher-stage ${hasEntered ? "entered" : ""}`}
+          className="teacher-stage"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           onPointerDown={handlePointerDown}
@@ -335,13 +310,27 @@ export default function TeacherCarousel() {
 
               const xOffset = position * cardStep;
 
-              // Keep cards vertically aligned with a subtle fan effect
               const yOffset = isCenter
                 ? 0
-                : Math.abs(position) * (isMobile ? 9 : 13);
+                : Math.abs(position) * (isMobile ? 5 : 8);
 
-              const rotation = position * (isMobile ? -3 : -5);
-              const scale = isCenter ? 1.06 : isMobile ? 0.83 : 0.84;
+              // Side cards tilt outward.
+              // Center card remains perfectly straight.
+              const tilt = isCenter
+                ? 0
+                : position < 0
+                  ? -7
+                  : 7;
+
+              const rotateY = isCenter
+                ? 0
+                : position * (isMobile ? -3 : -5);
+
+              const scale = isCenter
+                ? 1.06
+                : isMobile
+                  ? 0.83
+                  : 0.84;
 
               return (
                 <article
@@ -354,7 +343,8 @@ export default function TeacherCarousel() {
                     transform: `
                       translate(-50%, -50%)
                       translate(${xOffset}px, ${yOffset}px)
-                      rotateY(${rotation}deg)
+                      rotateZ(${tilt}deg)
+                      rotateY(${rotateY}deg)
                       scale(${scale})
                     `,
                     zIndex: isCenter
@@ -365,16 +355,16 @@ export default function TeacherCarousel() {
                     pointerEvents: visible ? "auto" : "none",
                   }}
                   onClick={() => handleCardClick(index)}
-                  onMouseEnter={() => handleCardMouseEnter(index)}
-                  onMouseLeave={() => handleCardMouseLeave(index)}
+                  onMouseEnter={() => handleMouseEnter(index)}
+                  onMouseLeave={() => handleMouseLeave(index)}
                   aria-hidden={!visible}
                 >
                   <div className="teacher-card-frame">
 
-                    {/* Teacher media */}
+                    {/* Media */}
                     <div className="teacher-media">
 
-                      {/* Video only for active center card */}
+                      {/* Only active center card video */}
                       {isCenter &&
                       hasEntered &&
                       isPlaying &&
@@ -420,7 +410,7 @@ export default function TeacherCarousel() {
                         BIO90 FACULTY
                       </span>
 
-                      {/* Sound control */}
+                      {/* Sound button */}
                       {isCenter &&
                         isPlaying &&
                         teacher.videoId && (
@@ -443,10 +433,10 @@ export default function TeacherCarousel() {
                         isMobile &&
                         !isPlaying &&
                         teacher.videoId && (
-                          <span className="teacher-play-hint">
+                          <div className="teacher-play-hint">
                             <span className="play-icon">▶</span>
                             <small>Tap to play video</small>
-                          </span>
+                          </div>
                         )}
                     </div>
 
@@ -457,9 +447,7 @@ export default function TeacherCarousel() {
                         <p>{teacher.subject} Expert</p>
                       </div>
 
-                      <span className="teacher-brand">
-                        BIO90
-                      </span>
+                      <span className="teacher-brand">BIO90</span>
                     </div>
 
                   </div>
@@ -592,7 +580,7 @@ export default function TeacherCarousel() {
           font-size: 15px;
         }
 
-        /* Stage */
+        /* Carousel stage */
 
         .teacher-stage {
           position: relative;
@@ -617,7 +605,6 @@ export default function TeacherCarousel() {
           position: relative;
           width: 100%;
           height: 100%;
-
           transform-style: preserve-3d;
         }
 
@@ -636,7 +623,7 @@ export default function TeacherCarousel() {
           will-change: transform, opacity;
 
           transition:
-            transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+            transform 750ms cubic-bezier(0.22, 1, 0.36, 1),
             opacity 450ms ease,
             filter 450ms ease;
 
@@ -676,13 +663,12 @@ export default function TeacherCarousel() {
             0 25px 55px rgba(0, 0, 0, 0.42);
         }
 
-        /* Media */
+        /* Cover image: preserve original aspect ratio */
 
         .teacher-media {
           position: relative;
           width: 100%;
           height: 100%;
-
           overflow: hidden;
 
           background: linear-gradient(
@@ -695,21 +681,21 @@ export default function TeacherCarousel() {
         .teacher-photo {
           object-fit: cover;
           object-position: center top;
-          transition: transform 500ms ease;
+          transform: none;
         }
 
-        .teacher-card.is-center:hover .teacher-photo {
-          transform: scale(1.025);
-        }
-
-        /* Video fills complete card */
+        /* Video: original 16:9 ratio, no zoom or stretch */
 
         .teacher-video-wrap {
           position: absolute;
-          inset: 0;
 
           width: 100%;
-          height: 100%;
+          aspect-ratio: 16 / 9;
+
+          left: 0;
+          top: 50%;
+
+          transform: translateY(-50%);
 
           overflow: hidden;
           background: #000;
@@ -719,19 +705,13 @@ export default function TeacherCarousel() {
 
         .teacher-video-wrap iframe {
           position: absolute;
+          inset: 0;
 
-          width: 250%;
+          width: 100%;
           height: 100%;
-
-          left: 50%;
-          top: 0;
-
-          transform: translateX(-50%);
 
           border: 0;
           display: block;
-
-          pointer-events: none;
         }
 
         /* Placeholder */
@@ -764,7 +744,6 @@ export default function TeacherCarousel() {
           height: 112px;
 
           border-radius: 50%;
-
           display: grid;
           place-items: center;
 
@@ -783,7 +762,7 @@ export default function TeacherCarousel() {
           letter-spacing: 3px;
         }
 
-        /* Video gradient */
+        /* Overlay */
 
         .teacher-media-gradient {
           position: absolute;
@@ -823,7 +802,7 @@ export default function TeacherCarousel() {
           color: var(--lime);
         }
 
-        /* Sound button */
+        /* Sound */
 
         .teacher-sound {
           position: absolute;
@@ -852,7 +831,7 @@ export default function TeacherCarousel() {
           color: var(--navy);
         }
 
-        /* Mobile play hint */
+        /* Play hint */
 
         .teacher-play-hint {
           position: absolute;
@@ -894,7 +873,7 @@ export default function TeacherCarousel() {
           text-shadow: 0 2px 5px #000;
         }
 
-        /* Teacher details */
+        /* Teacher information */
 
         .teacher-info {
           position: absolute;
@@ -1025,7 +1004,7 @@ export default function TeacherCarousel() {
           padding: 0 5px;
         }
 
-        /* Tablet and Mobile */
+        /* Mobile */
 
         @media (max-width: 899px) {
           .teacher-section {
@@ -1054,7 +1033,6 @@ export default function TeacherCarousel() {
 
             overflow: hidden;
             perspective: 1100px;
-
             touch-action: pan-y;
           }
 
