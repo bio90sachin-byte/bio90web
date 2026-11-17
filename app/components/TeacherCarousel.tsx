@@ -2,12 +2,26 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type TouchEvent,
+  type PointerEvent,
+} from "react";
 
-const teachers = [
+type Teacher = {
+  name: string;
+  subject: string;
+  image?: string;
+  videoId?: string;
+  videoStart?: number;
+  videoEnd?: number;
+};
+
+const teachers: Teacher[] = [
   {
-    id: "sachin",
     name: "Sachin Sharma",
     subject: "Chemistry",
     image: "/image/teachers/sachin-sharma.jpeg",
@@ -16,417 +30,1120 @@ const teachers = [
     videoEnd: 100,
   },
   {
-    id: "teacher-2",
     name: "Priyanshi Ma'am",
     subject: "Biology",
-    image: "",
-    videoId: "",
-    videoStart: 0,
-    videoEnd: 0,
   },
   {
-    id: "teacher-3",
     name: "Anij Sir",
     subject: "Physics",
-    image: "",
-    videoId: "",
-    videoStart: 0,
-    videoEnd: 0,
   },
   {
-    id: "teacher-4",
     name: "Saddab Sir",
     subject: "Mathematics",
-    image: "",
-    videoId: "",
-    videoStart: 0,
-    videoEnd: 0,
   },
-   {
-    id: "teacher-5",
+  {
     name: "Chnki Ma'am",
     subject: "Mathematics",
-    image: "",
-    videoId: "",
-    videoStart: 0,
-    videoEnd: 0,
   },
 ];
 
 export default function TeacherCarousel() {
-  const sliderRef = useRef<HTMLDivElement>(null);
-
-  const [activeVideo, setActiveVideo] = useState<string | null>(null);
-  const [activeSoundVideo, setActiveSoundVideo] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeVideo, setActiveVideo] = useState<number | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(390);
 
-  const dragRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startScrollLeft: 0,
-  });
+  const sectionRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
-  // Detect active card during horizontal scrolling
-  const handleScroll = () => {
-    const slider = sliderRef.current;
-    if (!slider) return;
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const pointerStartX = useRef(0);
+  const pointerStartY = useRef(0);
+  const pointerDragging = useRef(false);
+  const dragHandled = useRef(false);
 
-    const cards = Array.from(slider.children) as HTMLElement[];
-    const sliderLeft = slider.getBoundingClientRect().left;
+  const total = teachers.length;
 
-    let closestIndex = 0;
-    let closestDistance = Infinity;
+  // Responsive screen detection
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 899px)");
 
-    cards.forEach((card, index) => {
-      const distance = Math.abs(
-        card.getBoundingClientRect().left - sliderLeft
+    const updateScreen = () => {
+      setIsMobile(media.matches);
+      setScreenWidth(window.innerWidth);
+    };
+
+    updateScreen();
+
+    media.addEventListener("change", updateScreen);
+    window.addEventListener("resize", updateScreen);
+
+    return () => {
+      media.removeEventListener("change", updateScreen);
+      window.removeEventListener("resize", updateScreen);
+    };
+  }, []);
+
+  // Trigger entrance animation
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasEntered(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.12 }
+    );
+
+    observer.observe(section);
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Stop old video whenever center teacher changes
+  useEffect(() => {
+    setActiveVideo(null);
+    setSoundEnabled(false);
+  }, [activeIndex]);
+
+  const goToSlide = useCallback(
+    (index: number) => {
+      setActiveIndex((index + total) % total);
+    },
+    [total]
+  );
+
+  const nextSlide = useCallback(() => {
+    setActiveIndex((current) => (current + 1) % total);
+  }, [total]);
+
+  const previousSlide = useCallback(() => {
+    setActiveIndex((current) => (current - 1 + total) % total);
+  }, [total]);
+
+  // Find each card's position relative to the active card
+  const getPosition = (index: number) => {
+    let position = index - activeIndex;
+
+    if (position > total / 2) position -= total;
+    if (position < -total / 2) position += total;
+
+    return position;
+  };
+
+  // Build YouTube URL
+  const getVideoUrl = (teacher: Teacher) => {
+    if (!teacher.videoId) return "";
+
+    const params = new URLSearchParams({
+      autoplay: "1",
+      mute: soundEnabled ? "0" : "1",
+      controls: "0",
+      playsinline: "1",
+      rel: "0",
+      modestbranding: "1",
+      iv_load_policy: "3",
+      disablekb: "1",
+      fs: "0",
+    });
+
+    if (teacher.videoStart !== undefined) {
+      params.set("start", String(teacher.videoStart));
+    }
+
+    if (teacher.videoEnd !== undefined) {
+      params.set("end", String(teacher.videoEnd));
+    }
+
+    return `https://www.youtube-nocookie.com/embed/${teacher.videoId}?${params.toString()}`;
+  };
+
+  // Center card interaction
+  const handleCardClick = (index: number) => {
+    if (index !== activeIndex) {
+      goToSlide(index);
+      return;
+    }
+
+    // Mobile: tap center card to play or stop
+    if (isMobile) {
+      const teacher = teachers[index];
+
+      if (!teacher.videoId) return;
+
+      setActiveVideo((current) =>
+        current === index ? null : index
       );
 
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = index;
-      }
-    });
-
-    setActiveIndex(closestIndex);
-  };
-
-  // Navigate to a particular teacher card
-  const goToSlide = (index: number) => {
-    const slider = sliderRef.current;
-    if (!slider) return;
-
-    const card = slider.children[index] as HTMLElement;
-    if (!card) return;
-
-    const sliderRect = slider.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
-
-    const targetPosition =
-      slider.scrollLeft + cardRect.left - sliderRect.left;
-
-    setActiveVideo(null);
-    setActiveSoundVideo(null);
-    setActiveIndex(index);
-
-    slider.scrollTo({
-      left: targetPosition,
-      behavior: "smooth",
-    });
-  };
-
-  // Next teacher
-  const goToNextSlide = () => {
-    goToSlide((activeIndex + 1) % teachers.length);
-  };
-
-  // Previous teacher
-  const goToPreviousSlide = () => {
-    goToSlide(
-      (activeIndex - 1 + teachers.length) % teachers.length
-    );
-  };
-
-  // Desktop mouse drag: start
-  const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== "mouse" || e.button !== 0) return;
-
-    const slider = sliderRef.current;
-    if (!slider) return;
-
-    dragRef.current.isDragging = true;
-    dragRef.current.startX = e.clientX;
-    dragRef.current.startScrollLeft = slider.scrollLeft;
-
-    setActiveVideo(null);
-    setActiveSoundVideo(null);
-
-    slider.setPointerCapture(e.pointerId);
-  };
-
-  // Desktop mouse drag: move
-  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.isDragging) return;
-
-    const slider = sliderRef.current;
-    if (!slider) return;
-
-    const distance = e.clientX - dragRef.current.startX;
-
-    slider.scrollLeft =
-      dragRef.current.startScrollLeft - distance;
-  };
-
-  // Desktop mouse drag: stop
-  const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    dragRef.current.isDragging = false;
-
-    const slider = sliderRef.current;
-
-    if (slider?.hasPointerCapture(e.pointerId)) {
-      slider.releasePointerCapture(e.pointerId);
+      setSoundEnabled(false);
     }
   };
 
-  // Reload only the YouTube video in sound mode
-  const enableSound = (teacherId: string) => {
-    setActiveVideo(teacherId);
-    setActiveSoundVideo(teacherId);
+  // Desktop: play only when hovering over center card
+  const handleCardMouseEnter = (index: number) => {
+    if (isMobile || index !== activeIndex) return;
+
+    if (teachers[index]?.videoId) {
+      setActiveVideo(index);
+      setSoundEnabled(false);
+    }
   };
 
+  const handleCardMouseLeave = (index: number) => {
+    if (isMobile || index !== activeIndex) return;
+
+    setActiveVideo(null);
+    setSoundEnabled(false);
+  };
+
+  // Mobile swipe
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = event.touches[0]?.clientX ?? 0;
+    touchStartY.current = event.touches[0]?.clientY ?? 0;
+  };
+
+  const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    const endX = event.changedTouches[0]?.clientX ?? 0;
+    const endY = event.changedTouches[0]?.clientY ?? 0;
+
+    const differenceX = touchStartX.current - endX;
+    const differenceY = touchStartY.current - endY;
+
+    // Ignore vertical scrolling
+    if (
+      Math.abs(differenceX) < 35 ||
+      Math.abs(differenceX) < Math.abs(differenceY) * 1.15
+    ) {
+      return;
+    }
+
+    if (differenceX > 0) {
+      nextSlide();
+    } else {
+      previousSlide();
+    }
+  };
+
+  // Desktop drag
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (isMobile || event.button !== 0) return;
+
+    pointerStartX.current = event.clientX;
+    pointerStartY.current = event.clientY;
+    pointerDragging.current = true;
+    dragHandled.current = false;
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!pointerDragging.current || isMobile) return;
+
+    const differenceX = pointerStartX.current - event.clientX;
+    const differenceY = pointerStartY.current - event.clientY;
+
+    pointerDragging.current = false;
+
+    if (
+      Math.abs(differenceX) > 45 &&
+      Math.abs(differenceX) > Math.abs(differenceY)
+    ) {
+      dragHandled.current = true;
+
+      if (differenceX > 0) {
+        nextSlide();
+      } else {
+        previousSlide();
+      }
+    }
+  };
+
+  // Card dimensions and spacing
+  const stageWidth = Math.max(
+    280,
+    Math.min(screenWidth - (isMobile ? 24 : 40), 1250)
+  );
+
+  const mobileCardWidth = Math.min(screenWidth * 0.70, 275);
+
+  const desktopCardWidth = Math.min(
+    Math.max(stageWidth * 0.25, 245),
+    310
+  );
+
+  const cardWidth = isMobile
+    ? mobileCardWidth
+    : desktopCardWidth;
+
+  // On desktop, fit all five cards within the stage.
+  // On mobile, show center and neighboring cards peeking in.
+  const cardStep = isMobile
+    ? cardWidth * 0.82
+    : (stageWidth - cardWidth) / 4;
+
   return (
-    <section className="relative overflow-hidden bg-[#061630] px-5 py-24 text-white lg:px-10 lg:py-28">
+    <section
+      ref={sectionRef}
+      className="teacher-section"
+    >
+      <div className="teacher-glow" />
 
-      {/* BACKGROUND GLOW */}
-      <div className="pointer-events-none absolute -right-40 top-0 h-[450px] w-[450px] rounded-full bg-lime-400/15 blur-[120px]" />
+      <div className="teacher-container">
 
-      <div className="pointer-events-none absolute -left-40 bottom-0 h-[350px] w-[350px] rounded-full bg-green-500/10 blur-[100px]" />
+        {/* Heading */}
+        <div className="teacher-heading">
+          <span className="teacher-eyebrow">
+            MEET OUR EDUCATORS
+          </span>
 
-      <div className="relative mx-auto max-w-7xl">
+          <h2>
+            Learn From The <span>Best</span>
+          </h2>
 
-        {/* SECTION HEADING */}
-        <div className="flex flex-col justify-between gap-8 sm:flex-row sm:items-end">
-
-          <div>
-            <p className="text-sm font-bold tracking-[0.25em] text-lime-400">
-              THE PEOPLE BEHIND BIO90
-            </p>
-
-            <h2 className="mt-5 text-4xl font-black sm:text-5xl lg:text-6xl">
-              Meet Our
-              <span className="block text-lime-400">
-                Teachers.
-              </span>
-            </h2>
-
-            <p className="mt-5 max-w-xl leading-7 text-blue-100">
-              Meet the educators who make learning meaningful through
-              knowledge, guidance and a passion for teaching.
-            </p>
-          </div>
-
-          {/* SLIDER CONTROLS */}
-          <div className="flex items-center gap-3">
-
-            <span className="text-sm font-semibold text-blue-200">
-              Swipe to explore
-            </span>
-
-            <button
-              type="button"
-              onClick={goToPreviousSlide}
-              aria-label="Previous teacher"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-lg text-white transition duration-300 hover:border-lime-400 hover:bg-lime-400 hover:text-[#061630]"
-            >
-              ←
-            </button>
-
-            <button
-              type="button"
-              onClick={goToNextSlide}
-              aria-label="Next teacher"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-lime-400/50 text-xl text-lime-400 transition duration-300 hover:translate-x-1 hover:bg-lime-400 hover:text-[#061630]"
-            >
-              →
-            </button>
-
-          </div>
+          <p>
+            Experienced mentors. Inspiring guidance. Better results.
+          </p>
         </div>
 
-        {/* HORIZONTAL TEACHER SLIDER */}
+        {/* Carousel */}
         <div
-          ref={sliderRef}
-          onScroll={handleScroll}
+          ref={stageRef}
+          className={`teacher-stage ${hasEntered ? "entered" : ""}`}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
           onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onDragStart={(e) => e.preventDefault()}
-          role="region"
-          aria-label="BIO90 teachers"
-          className="mt-14 flex snap-x snap-mandatory touch-pan-x select-none gap-6 overflow-x-auto overscroll-x-contain pb-4 cursor-grab active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onPointerCancel={() => {
+            pointerDragging.current = false;
+          }}
         >
+          <div className="teacher-stage-inner">
 
-          {teachers.map((teacher, index) => {
-            const isPlaying = activeVideo === teacher.id;
-            const isSoundOn = activeSoundVideo === teacher.id;
+            {teachers.map((teacher, index) => {
+              const position = getPosition(index);
+              const isCenter = index === activeIndex;
+              const isPlaying = activeVideo === index;
 
-            return (
-              <article
-                key={teacher.id}
-                onMouseEnter={() => {
-                  if (
-                    teacher.videoId &&
-                    !dragRef.current.isDragging &&
-                    activeSoundVideo !== teacher.id
-                  ) {
-                    setActiveVideo(teacher.id);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (activeSoundVideo !== teacher.id) {
-                    setActiveVideo(null);
-                  }
-                }}
-                style={{ animationDelay: `${index * 120}ms` }}
-                className="teacher-card group relative h-[470px] w-[290px] shrink-0 snap-start overflow-hidden rounded-[30px] border border-white/20 bg-white/10 shadow-2xl backdrop-blur-xl transition duration-500 hover:border-lime-400/70 sm:h-[540px] sm:w-[350px]"
-              >
+              const visible = isMobile
+                ? Math.abs(position) <= 1
+                : Math.abs(position) <= 2;
 
-                {/* ORIGINAL TEACHER PHOTO */}
-                {teacher.image ? (
-                  <Image
-                    src={teacher.image}
-                    alt={teacher.name}
-                    fill
-                    priority={index === 0}
-                    unoptimized
-                    sizes="(max-width: 640px) 290px, 350px"
-                    draggable={false}
-                    className={`object-cover object-top transition-all duration-500 ${
-                      isPlaying
-                        ? "scale-105 opacity-0"
-                        : "scale-100 opacity-100"
-                    }`}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#183B58] via-[#0B1D3D] to-[#31551C]">
+              const xOffset = position * cardStep;
 
-                    <div className="text-center">
+              // Keep cards vertically aligned with a subtle fan effect
+              const yOffset = isCenter
+                ? 0
+                : Math.abs(position) * (isMobile ? 9 : 13);
 
-                      <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full border border-lime-400/50 bg-white/10 text-5xl font-black text-lime-400 backdrop-blur-xl">
-                        {teacher.name.charAt(0)}
-                      </div>
+              const rotation = position * (isMobile ? -3 : -5);
+              const scale = isCenter ? 1.06 : isMobile ? 0.83 : 0.84;
 
-                      <p className="mt-5 text-xs font-semibold tracking-widest text-white/70">
-                        TEACHER PROFILE
-                      </p>
+              return (
+                <article
+                  key={teacher.name}
+                  className={`teacher-card ${
+                    isCenter ? "is-center" : "is-side"
+                  }`}
+                  style={{
+                    width: `${cardWidth}px`,
+                    transform: `
+                      translate(-50%, -50%)
+                      translate(${xOffset}px, ${yOffset}px)
+                      rotateY(${rotation}deg)
+                      scale(${scale})
+                    `,
+                    zIndex: isCenter
+                      ? 30
+                      : 20 - Math.abs(position),
+                    opacity: visible ? 1 : 0,
+                    visibility: visible ? "visible" : "hidden",
+                    pointerEvents: visible ? "auto" : "none",
+                  }}
+                  onClick={() => handleCardClick(index)}
+                  onMouseEnter={() => handleCardMouseEnter(index)}
+                  onMouseLeave={() => handleCardMouseLeave(index)}
+                  aria-hidden={!visible}
+                >
+                  <div className="teacher-card-frame">
 
+                    {/* Teacher media */}
+                    <div className="teacher-media">
+
+                      {/* Video only for active center card */}
+                      {isCenter &&
+                      hasEntered &&
+                      isPlaying &&
+                      teacher.videoId ? (
+                        <div className="teacher-video-wrap">
+                          <iframe
+                            key={`${teacher.videoId}-${soundEnabled}`}
+                            src={getVideoUrl(teacher)}
+                            title={`${teacher.name} introduction`}
+                            allow="autoplay; encrypted-media; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      ) : teacher.image ? (
+                        <Image
+                          src={teacher.image}
+                          alt={teacher.name}
+                          fill
+                          priority={index === 0}
+                          sizes="(max-width: 899px) 70vw, 310px"
+                          className="teacher-photo"
+                        />
+                      ) : (
+                        <div className="teacher-placeholder">
+                          <span>
+                            {teacher.name
+                              .split(" ")
+                              .filter(Boolean)
+                              .map((part) => part[0])
+                              .join("")
+                              .replace(/[^A-Za-z]/g, "")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </span>
+
+                          <small>BIO90 EDUCATOR</small>
+                        </div>
+                      )}
+
+                      <div className="teacher-media-gradient" />
+
+                      <span className="teacher-faculty-label">
+                        BIO90 FACULTY
+                      </span>
+
+                      {/* Sound control */}
+                      {isCenter &&
+                        isPlaying &&
+                        teacher.videoId && (
+                          <button
+                            type="button"
+                            className="teacher-sound"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSoundEnabled((previous) => !previous);
+                            }}
+                          >
+                            {soundEnabled
+                              ? "🔊 Sound On"
+                              : "🔇 Enable Sound"}
+                          </button>
+                        )}
+
+                      {/* Mobile play hint */}
+                      {isCenter &&
+                        isMobile &&
+                        !isPlaying &&
+                        teacher.videoId && (
+                          <span className="teacher-play-hint">
+                            <span className="play-icon">▶</span>
+                            <small>Tap to play video</small>
+                          </span>
+                        )}
                     </div>
-                  </div>
-                )}
 
-                {/* YOUTUBE VIDEO */}
-                {isPlaying && teacher.videoId && (
-                  <iframe
-                    key={`${teacher.id}-${isSoundOn ? "sound" : "muted"}`}
-                    src={`https://www.youtube.com/embed/${teacher.videoId}?autoplay=1&mute=${isSoundOn ? 0 : 1}&controls=${isSoundOn ? 1 : 0}&start=${teacher.videoStart}&end=${teacher.videoEnd}&playsinline=1&rel=0`}
-                    title={`${teacher.name} teaching preview`}
-                    allow="autoplay; encrypted-media; picture-in-picture"
-                    className={`absolute inset-0 z-20 h-full w-full border-0 ${
-                      isSoundOn
-                        ? "pointer-events-auto"
-                        : "pointer-events-none"
-                    }`}
-                  />
-                )}
-
-                {/* ENABLE SOUND BUTTON */}
-                {isPlaying && teacher.videoId && !isSoundOn && (
-                  <button
-                    type="button"
-                    onClick={() => enableSound(teacher.id)}
-                    className="absolute bottom-6 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-full border border-lime-400/50 bg-[#061630]/90 px-5 py-3 text-sm font-semibold text-white shadow-lg backdrop-blur-xl transition hover:bg-lime-400 hover:text-[#061630]"
-                  >
-                    🔊 Enable Sound
-                  </button>
-                )}
-
-                {/* IMAGE OVERLAY */}
-                <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-b from-black/30 via-transparent to-black/20" />
-
-                {/* GLASS NAME PLATE */}
-                <div className="absolute left-5 top-5 z-30 flex items-center gap-3 rounded-full border border-white/40 bg-white/20 py-2 pl-2 pr-6 shadow-xl backdrop-blur-xl">
-
-                  <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full border border-white/70 bg-[#071B43]">
-
-                    {teacher.image ? (
-                      <Image
-                        src={teacher.image}
-                        alt=""
-                        fill
-                        unoptimized
-                        sizes="44px"
-                        draggable={false}
-                        className="object-cover object-top"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm font-bold text-lime-400">
-                        {teacher.name.charAt(0)}
+                    {/* Teacher information */}
+                    <div className="teacher-info">
+                      <div>
+                        <h3>{teacher.name}</h3>
+                        <p>{teacher.subject} Expert</p>
                       </div>
-                    )}
+
+                      <span className="teacher-brand">
+                        BIO90
+                      </span>
+                    </div>
 
                   </div>
+                </article>
+              );
+            })}
 
-                  <div>
-                    <h3 className="text-sm font-bold text-white">
-                      {teacher.name}
-                    </h3>
+          </div>
+        </div>
 
-                    <p className="text-xs text-white/85">
-                      {teacher.subject}
-                    </p>
-                  </div>
+        {/* Navigation */}
+        <div className="teacher-navigation">
 
-                </div>
+          <button
+            type="button"
+            className="teacher-arrow"
+            onClick={previousSlide}
+            aria-label="Previous teacher"
+          >
+            ←
+          </button>
 
-                {/* GLASS BORDER */}
-                <div className="pointer-events-none absolute inset-0 z-30 rounded-[30px] border border-white/20 transition duration-500 group-hover:border-lime-400/70" />
+          <div className="teacher-dots">
+            {teachers.map((teacher, index) => (
+              <button
+                key={teacher.name}
+                type="button"
+                onClick={() => goToSlide(index)}
+                className={`teacher-dot ${
+                  activeIndex === index ? "active" : ""
+                }`}
+                aria-label={`Show ${teacher.name}`}
+                aria-current={
+                  activeIndex === index ? "true" : undefined
+                }
+              />
+            ))}
+          </div>
 
-              </article>
-            );
-          })}
+          <button
+            type="button"
+            className="teacher-arrow"
+            onClick={nextSlide}
+            aria-label="Next teacher"
+          >
+            →
+          </button>
 
         </div>
 
-        {/* PAGINATION DOTS */}
-        <div className="mt-9 flex items-center justify-center gap-2">
-
-          {teachers.map((teacher, index) => (
-            <button
-              key={teacher.id}
-              type="button"
-              onClick={() => goToSlide(index)}
-              aria-label={`Go to ${teacher.name}`}
-              aria-current={activeIndex === index ? "true" : undefined}
-              className={`h-2.5 rounded-full transition-all duration-500 ${
-                activeIndex === index
-                  ? "w-9 bg-lime-400"
-                  : "w-2.5 bg-white/35 hover:bg-white/70"
-              }`}
-            />
-          ))}
-
-        </div>
+        <p className="teacher-hint">
+          <span>←</span> Swipe or select a mentor <span>→</span>
+        </p>
 
       </div>
 
-      {/* CARD ENTRANCE ANIMATION */}
       <style jsx>{`
-        .teacher-card {
-          opacity: 0;
-          animation: teacherReveal 0.8s ease forwards;
+        .teacher-section {
+          --navy: #071b38;
+          --navy-light: #12365a;
+          --lime: #b8f34a;
+
+          position: relative;
+          width: 100%;
+          overflow: hidden;
+          isolation: isolate;
+
+          padding: 85px 20px 65px;
+
+          background: var(--navy);
+          color: #fff;
         }
 
-        @keyframes teacherReveal {
-          from {
-            opacity: 0;
-            transform: translateY(35px) scale(0.96);
+        .teacher-glow {
+          position: absolute;
+          width: 650px;
+          height: 650px;
+          left: 50%;
+          top: 48%;
+
+          transform: translate(-50%, -50%);
+          border-radius: 50%;
+
+          background: radial-gradient(
+            circle,
+            rgba(184, 243, 74, 0.13),
+            transparent 70%
+          );
+
+          pointer-events: none;
+          z-index: -1;
+        }
+
+        .teacher-container {
+          position: relative;
+          width: 100%;
+          max-width: 1250px;
+          margin: auto;
+        }
+
+        /* Heading */
+
+        .teacher-heading {
+          text-align: center;
+          margin-bottom: 20px;
+        }
+
+        .teacher-eyebrow {
+          color: var(--lime);
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 3px;
+        }
+
+        .teacher-heading h2 {
+          margin: 14px 0 0;
+          font-size: clamp(32px, 5vw, 52px);
+          line-height: 1.15;
+          font-weight: 850;
+          letter-spacing: -1.5px;
+        }
+
+        .teacher-heading h2 span {
+          color: var(--lime);
+        }
+
+        .teacher-heading p {
+          color: #bdc9d8;
+          margin-top: 14px;
+          font-size: 15px;
+        }
+
+        /* Stage */
+
+        .teacher-stage {
+          position: relative;
+          width: 100%;
+          height: 570px;
+
+          overflow: hidden;
+          perspective: 1500px;
+
+          touch-action: pan-y;
+          user-select: none;
+          -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          cursor: grab;
+        }
+
+        .teacher-stage:active {
+          cursor: grabbing;
+        }
+
+        .teacher-stage-inner {
+          position: relative;
+          width: 100%;
+          height: 100%;
+
+          transform-style: preserve-3d;
+        }
+
+        /* Cards */
+
+        .teacher-card {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+
+          height: 455px;
+
+          transform-origin: center center;
+          transform-style: preserve-3d;
+
+          will-change: transform, opacity;
+
+          transition:
+            transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 450ms ease,
+            filter 450ms ease;
+
+          cursor: pointer;
+        }
+
+        .teacher-card.is-center {
+          filter: drop-shadow(
+            0 22px 30px rgba(0, 0, 0, 0.38)
+          );
+        }
+
+        .teacher-card.is-side {
+          filter: brightness(0.88);
+        }
+
+        .teacher-card-frame {
+          position: relative;
+          width: 100%;
+          height: 100%;
+
+          overflow: hidden;
+          border-radius: 25px;
+
+          border: 1px solid rgba(184, 243, 74, 0.55);
+
+          background: var(--navy-light);
+
+          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
+        }
+
+        .teacher-card.is-center .teacher-card-frame {
+          border: 2px solid var(--lime);
+
+          box-shadow:
+            0 0 0 5px rgba(184, 243, 74, 0.1),
+            0 25px 55px rgba(0, 0, 0, 0.42);
+        }
+
+        /* Media */
+
+        .teacher-media {
+          position: relative;
+          width: 100%;
+          height: 100%;
+
+          overflow: hidden;
+
+          background: linear-gradient(
+            145deg,
+            #173c62,
+            #071b38
+          );
+        }
+
+        .teacher-photo {
+          object-fit: cover;
+          object-position: center top;
+          transition: transform 500ms ease;
+        }
+
+        .teacher-card.is-center:hover .teacher-photo {
+          transform: scale(1.025);
+        }
+
+        /* Video fills complete card */
+
+        .teacher-video-wrap {
+          position: absolute;
+          inset: 0;
+
+          width: 100%;
+          height: 100%;
+
+          overflow: hidden;
+          background: #000;
+
+          z-index: 2;
+        }
+
+        .teacher-video-wrap iframe {
+          position: absolute;
+
+          width: 250%;
+          height: 100%;
+
+          left: 50%;
+          top: 0;
+
+          transform: translateX(-50%);
+
+          border: 0;
+          display: block;
+
+          pointer-events: none;
+        }
+
+        /* Placeholder */
+
+        .teacher-placeholder {
+          position: absolute;
+          inset: 0;
+
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          gap: 12px;
+
+          background:
+            radial-gradient(
+              circle at 50% 35%,
+              rgba(184, 243, 74, 0.2),
+              transparent 40%
+            ),
+            linear-gradient(
+              145deg,
+              #173c62,
+              #071b38
+            );
+        }
+
+        .teacher-placeholder span {
+          width: 112px;
+          height: 112px;
+
+          border-radius: 50%;
+
+          display: grid;
+          place-items: center;
+
+          background: rgba(184, 243, 74, 0.12);
+          border: 2px solid var(--lime);
+
+          color: var(--lime);
+          font-size: 38px;
+          font-weight: 900;
+        }
+
+        .teacher-placeholder small {
+          color: #d4e5bd;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 3px;
+        }
+
+        /* Video gradient */
+
+        .teacher-media-gradient {
+          position: absolute;
+          inset: 0;
+
+          z-index: 3;
+          pointer-events: none;
+
+          background: linear-gradient(
+            to bottom,
+            rgba(7, 27, 56, 0.12) 0%,
+            transparent 42%,
+            rgba(3, 14, 30, 0.92) 100%
+          );
+        }
+
+        /* Faculty label */
+
+        .teacher-faculty-label {
+          position: absolute;
+
+          top: 17px;
+          left: 15px;
+
+          z-index: 5;
+
+          border: 1px solid rgba(184, 243, 74, 0.7);
+          background: rgba(7, 27, 56, 0.92);
+
+          border-radius: 30px;
+          padding: 8px 12px;
+
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: 1.5px;
+
+          color: var(--lime);
+        }
+
+        /* Sound button */
+
+        .teacher-sound {
+          position: absolute;
+
+          top: 15px;
+          right: 12px;
+
+          z-index: 6;
+
+          border: 1px solid rgba(255, 255, 255, 0.35);
+          background: rgba(7, 27, 56, 0.94);
+
+          color: #fff;
+
+          padding: 9px 12px;
+          border-radius: 30px;
+
+          font-size: 11px;
+          font-weight: 700;
+
+          cursor: pointer;
+        }
+
+        .teacher-sound:hover {
+          background: var(--lime);
+          color: var(--navy);
+        }
+
+        /* Mobile play hint */
+
+        .teacher-play-hint {
+          position: absolute;
+          inset: 0;
+
+          z-index: 4;
+
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+
+          pointer-events: none;
+        }
+
+        .play-icon {
+          width: 55px;
+          height: 55px;
+
+          display: grid;
+          place-items: center;
+
+          padding-left: 4px;
+
+          border-radius: 50%;
+          border: 1px solid rgba(184, 243, 74, 0.8);
+
+          color: var(--lime);
+          background: rgba(7, 27, 56, 0.75);
+
+          font-size: 19px;
+        }
+
+        .teacher-play-hint small {
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
+          text-shadow: 0 2px 5px #000;
+        }
+
+        /* Teacher details */
+
+        .teacher-info {
+          position: absolute;
+          z-index: 5;
+
+          left: 0;
+          right: 0;
+          bottom: 0;
+
+          padding: 25px 20px 20px;
+
+          display: flex;
+          justify-content: space-between;
+          align-items: end;
+          gap: 10px;
+
+          background: linear-gradient(
+            to bottom,
+            transparent,
+            rgba(3, 14, 30, 0.96)
+          );
+        }
+
+        .teacher-info h3 {
+          color: #fff;
+
+          font-size: 21px;
+          line-height: 1.2;
+          font-weight: 850;
+
+          margin: 0;
+        }
+
+        .teacher-info p {
+          color: var(--lime);
+
+          font-size: 13px;
+          font-weight: 700;
+
+          margin: 7px 0 0;
+        }
+
+        .teacher-brand {
+          color: rgba(184, 243, 74, 0.85);
+
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 1px;
+        }
+
+        /* Navigation */
+
+        .teacher-navigation {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+
+          gap: 28px;
+          margin-top: 5px;
+        }
+
+        .teacher-arrow {
+          width: 42px;
+          height: 42px;
+
+          display: grid;
+          place-items: center;
+
+          border: 1px solid rgba(184, 243, 74, 0.55);
+          border-radius: 50%;
+
+          background: rgba(184, 243, 74, 0.08);
+
+          color: var(--lime);
+          font-size: 21px;
+
+          cursor: pointer;
+          transition: 200ms ease;
+        }
+
+        .teacher-arrow:hover {
+          color: var(--navy);
+          background: var(--lime);
+          transform: scale(1.08);
+        }
+
+        .teacher-dots {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .teacher-dot {
+          width: 8px;
+          height: 8px;
+
+          padding: 0;
+          border: 0;
+          border-radius: 20px;
+
+          background: rgba(255, 255, 255, 0.35);
+
+          cursor: pointer;
+          transition: all 350ms ease;
+        }
+
+        .teacher-dot.active {
+          width: 30px;
+
+          background: var(--lime);
+
+          box-shadow: 0 0 12px rgba(184, 243, 74, 0.4);
+        }
+
+        .teacher-hint {
+          color: #9eafc3;
+
+          text-align: center;
+          font-size: 11px;
+          letter-spacing: 1px;
+
+          margin-top: 20px;
+        }
+
+        .teacher-hint span {
+          color: var(--lime);
+          padding: 0 5px;
+        }
+
+        /* Tablet and Mobile */
+
+        @media (max-width: 899px) {
+          .teacher-section {
+            padding: 65px 12px 45px;
           }
 
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
+          .teacher-heading {
+            margin-bottom: 8px;
+          }
+
+          .teacher-heading h2 {
+            font-size: clamp(29px, 8vw, 40px);
+          }
+
+          .teacher-heading p {
+            max-width: 310px;
+            margin: 12px auto 0;
+
+            font-size: 13px;
+            line-height: 1.6;
+          }
+
+          .teacher-stage {
+            height: 445px;
+            margin-top: 10px;
+
+            overflow: hidden;
+            perspective: 1100px;
+
+            touch-action: pan-y;
+          }
+
+          .teacher-card {
+            height: 365px;
+          }
+
+          .teacher-card-frame {
+            border-radius: 22px;
+          }
+
+          .teacher-info {
+            padding: 20px 14px 17px;
+          }
+
+          .teacher-info h3 {
+            font-size: 18px;
+          }
+
+          .teacher-info p {
+            font-size: 11px;
+          }
+
+          .teacher-navigation {
+            gap: 18px;
+          }
+
+          .teacher-arrow {
+            width: 37px;
+            height: 37px;
+            font-size: 18px;
+          }
+
+          .teacher-dots {
+            gap: 8px;
+          }
+
+          .teacher-dot {
+            width: 7px;
+            height: 7px;
+          }
+
+          .teacher-dot.active {
+            width: 24px;
+          }
+
+          .teacher-hint {
+            font-size: 10px;
+          }
+
+          .teacher-sound {
+            font-size: 10px;
+            padding: 8px 10px;
+          }
+
+          .teacher-faculty-label {
+            top: 13px;
+            left: 11px;
+            font-size: 8px;
+            padding: 7px 9px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .teacher-stage {
+            height: 420px;
+          }
+
+          .teacher-card {
+            height: 350px;
+          }
+
+          .teacher-info h3 {
+            font-size: 16px;
+          }
+
+          .teacher-info p {
+            font-size: 10px;
           }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .teacher-card {
-            animation: none;
-            opacity: 1;
+          .teacher-card,
+          .teacher-dot,
+          .teacher-arrow {
+            transition: none !important;
           }
         }
       `}</style>
-
     </section>
   );
 }
